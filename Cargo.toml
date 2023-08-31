@@ -1,10 +1,11 @@
 [package]
 name = "font-index"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["chad <cbrokaw@gmail.com>"]
 edition = "2018"
 description = "Static index for system fonts"
 repository = "https://git.sr.ht/~declantsien/font-index"
+license-file = "LICENSE"
 
 [dependencies]
 swash = "0.1"
