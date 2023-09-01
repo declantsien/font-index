@@ -20,10 +20,10 @@ fn main() {
     let weight = Weight::NORMAL;
 
     if let Some(font) = FontIndex::global().query(
-        "Droid Sans Mono",
+        "monospace",
         Attributes::new(stretch, weight, style),
     ) {
-        println!("font {:?} {:?}", font.family_name(), font.attributes());
+        println!("monospace font {:?} {:?}", font.family_name(), font.attributes());
     }
 
     if let Some(family) = FontIndex::global().family_by_key("serif") {
