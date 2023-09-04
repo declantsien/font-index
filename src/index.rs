@@ -317,16 +317,15 @@ impl StaticIndex {
     }
 
     /// Returns a font family entry for the specified name.
-
-    // thread 'main' has overflowed its stack
-    // fatal runtime error: stack overflow
-    // pub fn family_by_name<'a>(&'a self, name: &'a str) -> Option<FamilyEntry<'a>> {
-    //     self.family_by_key(name)
-    // }
-    pub fn family_by_name<'a>(&'a self, name: & str) -> Option<FamilyEntry<'a>> {
+    pub fn family_by_name<'a>(&'a self, name: &str) -> Option<FamilyEntry<'a>> {
         let mut s = LowercaseString::new();
-        let lowercase_name = s.get(name)?;
-        let id = *self.base.family_map.get(lowercase_name)?;
+        let name = s.get(name)?;
+        let id = if let Some(generic) = GenericFamily::parse(name) {
+            self.generic.get(generic as usize).copied()??
+        } else {
+            *self.base.family_map.get(name)?
+        };
+
         self.family_by_id(id)
     }
 
