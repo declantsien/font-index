@@ -2,6 +2,8 @@
 
 use swash::Attributes;
 
+use crate::util::string::LowercaseString;
+
 /// Identifier for a font in a library.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct FontId(pub u32);
@@ -50,13 +52,17 @@ pub enum GenericFamily {
 impl GenericFamily {
     /// Parses a generic font family from CSS style names.
     pub fn parse(family: &str) -> Option<Self> {
+        let mut s = LowercaseString::new();
+        let family = s.get(family)?;
         Some(match family {
             "serif" => Self::Serif,
             "sans-serif" => Self::SansSerif,
+            "sans serif" => Self::SansSerif,
             "monospace" => Self::Monospace,
             "cursive" => Self::Cursive,
             "fantasy" => Self::Fantasy,
             "system-ui" => Self::SystemUI,
+            "system ui" => Self::SystemUI,
             "math" => Self::Math,
             "emoji" => Self::Emoji,
             _ => return None,
