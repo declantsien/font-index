@@ -1,11 +1,10 @@
 //! Shared font data.
 
-use std::io;
+use std::{io, fmt};
 use std::path::Path;
 use std::sync::{Arc, Weak};
 use std::time::SystemTime;
 
-#[derive(Debug)]
 enum Inner {
     Mapped(memmap2::Mmap),
     Memory(Vec<u8>),
@@ -16,6 +15,15 @@ impl Inner {
         match self {
             Self::Mapped(mmap) => &*mmap,
             Self::Memory(vec) => &vec,
+        }
+    }
+}
+
+impl fmt::Debug for Inner {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Mapped(mmap) => write!(f, "{:?}", mmap),
+            Self::Memory(vec) => write!(f, "{:?}..", &vec[..50]),
         }
     }
 }
