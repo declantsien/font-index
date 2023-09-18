@@ -30,7 +30,7 @@ pub use library::FontLibrary;
 pub use shared_data::SharedData;
 pub use types::{FamilyId, FamilyKey, FontId, FontKey, GenericFamily, SourceId};
 
-use swash::{CacheKey, iter::*, *};
+use swash::{iter::*, CacheKey, *};
 
 /// Shared reference to a font.
 #[derive(Clone, Debug)]
@@ -42,6 +42,26 @@ pub struct Font {
 }
 
 impl Font {
+    pub fn from_data(data: Vec<u8>, index: usize) -> Option<Self> {
+        let data = SharedData::new(data);
+        if let Some(font_ref) = FontRef::from_index(&data, index as usize) {
+            let (offset, key, attributes) = (font_ref.offset, font_ref.key, font_ref.attributes());
+            return Some(Self {
+                data,
+                offset,
+                attributes,
+                key,
+            });
+        }
+        None
+    }
+
+    pub fn from_file(path: &str, index: usize) -> Option<Self> {
+        // Read the full font file
+        let data = std::fs::read(path).ok()?;
+        Self::from_data(data, index)
+    }
+
     /// Returns the primary attributes for the font.
     pub fn attributes(&self) -> Attributes {
         self.as_ref().attributes()
