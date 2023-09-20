@@ -27,6 +27,7 @@ impl FontLibrary {
 impl Default for FontLibrary {
     fn default() -> Self {
         Self::builder()
+            .all_names(true)
             .mmap(MmapHint::Threshold(1024 * 1024))
             .add_system_fonts()
             .add_user_fonts()
