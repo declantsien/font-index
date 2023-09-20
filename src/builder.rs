@@ -513,6 +513,7 @@ impl Scanner {
                 }
             }
         }
+	self.font.name_count = count;
         f(&self.font);
         Some(())
     }
