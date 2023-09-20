@@ -431,16 +431,7 @@ impl Scanner {
                             _ => continue,
                         }
                     }
-                    if let Ok(file) = fs::File::open(&path) {
-                        if let Ok(metadata) = entry.metadata() {
-                            if let Ok(timestamp) = metadata.modified() {
-                                if let Ok(data) = unsafe { memmap2::Mmap::map(&file) } {
-                                    sink.enter_file(path, timestamp, metadata.len());
-                                    self.scan_data(&*data, all_names, |f| sink.add_font(f));
-                                }
-                            }
-                        }
-                    }
+                    self.scan_file(&path, all_names, sink);
                 } else if path.is_dir() {
                     self.scan_dir_impl(&path, all_names, sink, recurse + 1);
                 }
