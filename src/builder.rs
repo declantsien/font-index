@@ -10,6 +10,7 @@ use std::{
     sync::RwLock,
     time::SystemTime,
 };
+use swash::Tag;
 use swash::{Attributes, CacheKey, FontDataRef, FontRef, Stretch, StringId, Style, Weight};
 
 /// Hint for specifying whether font files should be memory mapped.
@@ -322,6 +323,22 @@ impl ScannerSink for Inner {
                     .insert(SmallString::new(name.as_str()), family_id);
             }
         }
+
+        for script_tag in &font.script_tags {
+            index
+                .script_tag_map
+                .entry(*script_tag)
+                .and_modify(|fonts| fonts.push(font_id))
+                .or_insert(vec![font_id]);
+        }
+
+        for lang_tag in &font.lang_tags {
+            index
+                .language_tag_map
+                .entry(*lang_tag)
+                .and_modify(|fonts| fonts.push(font_id))
+                .or_insert(vec![font_id]);
+        }
     }
 }
 
@@ -336,6 +353,8 @@ pub struct FontInfo {
     pub style: Style,
     all_names: Vec<String>,
     name_count: usize,
+    pub lang_tags: Vec<Tag>,
+    pub script_tags: Vec<Tag>,
 }
 
 impl FontInfo {
@@ -513,7 +532,14 @@ impl Scanner {
                 }
             }
         }
-	self.font.name_count = count;
+        self.font.name_count = count;
+        self.font.script_tags = Vec::new();
+        self.font.lang_tags = Vec::new();
+
+        font.writing_systems().for_each(|w| {
+            self.font.script_tags.push(w.script_tag());
+            self.font.lang_tags.push(w.language_tag());
+        });
         f(&self.font);
         Some(())
     }
