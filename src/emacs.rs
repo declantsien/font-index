@@ -1,9 +1,6 @@
 use once_cell::sync::Lazy as LazyLock;
 
-use crate::util::{
-    fxhash::FxHashMap,
-    string::{LowercaseString, SmallString},
-};
+use crate::util::{fxhash::FxHashMap, string::SmallString};
 
 pub static EMACS_CHARSET_MAP: LazyLock<FxHashMap<SmallString, (Vec<u32>, Option<SmallString>)>> =
     LazyLock::new(|| {
