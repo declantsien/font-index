@@ -1,12 +1,13 @@
 /*!
 Font management.
-*/
-
+ */
 pub mod prelude;
 mod util;
 
 mod builder;
 pub mod context;
+#[cfg(feature = "emacs")]
+mod emacs;
 mod fallback;
 mod family;
 mod index;

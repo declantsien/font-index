@@ -1,3 +1,5 @@
+#[cfg(feature = "emacs")]
+use super::emacs::EMACS_CHARSET_MAP;
 use super::index::*;
 use super::index_data::*;
 use super::library::FontLibrary;
@@ -10,6 +12,8 @@ use std::{
     sync::RwLock,
     time::SystemTime,
 };
+#[cfg(feature = "emacs")]
+use swash::text::Language;
 use swash::Tag;
 use swash::{Attributes, CacheKey, FontDataRef, FontRef, Stretch, StringId, Style, Weight};
 
@@ -339,6 +343,15 @@ impl ScannerSink for Inner {
                 .and_modify(|fonts| fonts.push(font_id))
                 .or_insert(vec![font_id]);
         }
+
+        #[cfg(feature = "emacs")]
+        for supported_charset in &font.supported_charsets {
+            index
+                .charset_map
+                .entry(SmallString::new(supported_charset.as_str()))
+                .and_modify(|fonts| fonts.push(font_id))
+                .or_insert(vec![font_id]);
+        }
     }
 }
 
@@ -355,6 +368,8 @@ pub struct FontInfo {
     name_count: usize,
     pub lang_tags: Vec<Tag>,
     pub script_tags: Vec<Tag>,
+    #[cfg(feature = "emacs")]
+    pub supported_charsets: Vec<SmallString>,
 }
 
 impl FontInfo {
@@ -540,6 +555,37 @@ impl Scanner {
             self.font.script_tags.push(w.script_tag());
             self.font.lang_tags.push(w.language_tag());
         });
+
+        #[cfg(feature = "emacs")]
+        {
+            let charsets: Vec<SmallString> = EMACS_CHARSET_MAP
+                .iter()
+                .filter_map(|(charset, (chars, language))| {
+                    if let Some(language) = language
+                        .as_ref()
+                        .map(|language| Language::parse(language.as_str()))
+                        .flatten()
+                        .map(|lang| lang.to_opentype())
+                        .flatten()
+                    {
+                        if !self.font.lang_tags.contains(&language) {
+                            return None;
+                        }
+                    }
+                    if chars
+                        .iter()
+                        .all(|codepoint| font.charmap().map(*codepoint) != 0)
+                    {
+                        return Some(SmallString::new(charset.as_str()));
+                    }
+
+                    None
+                })
+                .collect();
+
+            self.font.supported_charsets = charsets;
+        }
+
         f(&self.font);
         Some(())
     }

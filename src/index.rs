@@ -32,6 +32,8 @@ pub struct StaticIndex {
     pub script_map: FxHashMap<Script, Fallbacks>,
     pub script_tag_map: FxHashMap<Tag, Vec<FontId>>,
     pub language_tag_map: FxHashMap<Tag, Vec<FontId>>,
+    #[cfg(feature = "emacs")]
+    pub charset_map: FxHashMap<SmallString, Vec<FontId>>,
     pub cjk: [Fallbacks; 5],
     pub generic: [Option<FamilyId>; 13],
 }
@@ -45,6 +47,8 @@ impl Default for StaticIndex {
             script_map: Default::default(),
             script_tag_map: Default::default(),
             language_tag_map: Default::default(),
+	    #[cfg(feature = "emacs")]
+            charset_map: Default::default(),
             cjk: [fallbacks; 5],
             generic: [None; 13],
         }
