@@ -5,6 +5,7 @@ use super::index_data::*;
 use super::library::FontLibrary;
 use super::system::{Os, OS};
 use super::types::*;
+use crate::emacs::SCRIPT_REPRESENTATIVE_CHARS;
 use crate::util::string::SmallString;
 use std::{
     fs,
@@ -347,8 +348,17 @@ impl ScannerSink for Inner {
         #[cfg(feature = "emacs")]
         for supported_charset in &font.supported_charsets {
             index
-                .charset_map
+                .emacs_charset_map
                 .entry(SmallString::new(supported_charset.as_str()))
+                .and_modify(|fonts| fonts.push(font_id))
+                .or_insert(vec![font_id]);
+        }
+
+        #[cfg(feature = "emacs")]
+        for supported_script in &font.supported_scripts {
+            index
+                .emacs_script_map
+                .entry(SmallString::new(supported_script.as_str()))
                 .and_modify(|fonts| fonts.push(font_id))
                 .or_insert(vec![font_id]);
         }
@@ -370,6 +380,8 @@ pub struct FontInfo {
     pub script_tags: Vec<Tag>,
     #[cfg(feature = "emacs")]
     pub supported_charsets: Vec<SmallString>,
+    #[cfg(feature = "emacs")]
+    pub supported_scripts: Vec<SmallString>,
 }
 
 impl FontInfo {
@@ -558,7 +570,7 @@ impl Scanner {
 
         #[cfg(feature = "emacs")]
         {
-            let charsets: Vec<SmallString> = EMACS_CHARSET_MAP
+            let supported_charsets: Vec<SmallString> = EMACS_CHARSET_MAP
                 .iter()
                 .filter_map(|(charset, (chars, language))| {
                     if let Some(language) = language
@@ -583,7 +595,23 @@ impl Scanner {
                 })
                 .collect();
 
-            self.font.supported_charsets = charsets;
+            self.font.supported_charsets = supported_charsets;
+
+            let supported_scripts: Vec<SmallString> = SCRIPT_REPRESENTATIVE_CHARS
+                .iter()
+                .filter_map(|(script, chars)| {
+                    if chars
+                        .iter()
+                        .all(|codepoint| font.charmap().map(*codepoint) != 0)
+                    {
+                        return Some(SmallString::new(script.as_str()));
+                    }
+
+                    None
+                })
+                .collect();
+
+            self.font.supported_scripts = supported_scripts;
         }
 
         f(&self.font);
