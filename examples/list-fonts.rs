@@ -119,7 +119,7 @@ fn main() {
     //     }
     // });
 
-    FontIndex::global().charset_map.iter().for_each(|(charset, fonts)| {
+    FontIndex::global().emacs_charset_map.iter().for_each(|(charset, fonts)| {
 	println!("{:?}: {:?}", charset, fonts);
     });
 
