@@ -316,6 +316,7 @@ impl ScannerSink for Inner {
             stretch: font.stretch,
             weight: font.weight,
             style: font.style,
+            writing_systems: font.writing_systems.clone(),
         });
         if font.stretch != Stretch::NORMAL {
             family.has_stretch = true;
@@ -329,29 +330,33 @@ impl ScannerSink for Inner {
             }
         }
 
-        for script_tag in &font.script_tags {
-            index
-                .script_tag_map
-                .entry(*script_tag)
-                .and_modify(|fonts| fonts.push(font_id))
-                .or_insert(vec![font_id]);
-        }
+        font.writing_systems
+            .iter()
+            .for_each(|(script_tag, language_tag, _)| {
+                index
+                    .script_tag_map
+                    .entry(*script_tag)
+                    .and_modify(|families| families.push(family_id))
+                    .or_insert(vec![family_id]);
 
-        for lang_tag in &font.lang_tags {
-            index
-                .language_tag_map
-                .entry(*lang_tag)
-                .and_modify(|fonts| fonts.push(font_id))
-                .or_insert(vec![font_id]);
-        }
+                index
+                    .language_tag_map
+                    .entry(*language_tag)
+                    .and_modify(|families| families.push(family_id))
+                    .or_insert(vec![family_id]);
+            });
 
         #[cfg(feature = "emacs")]
         for supported_charset in &font.supported_charsets {
             index
                 .emacs_charset_map
                 .entry(SmallString::new(supported_charset.as_str()))
-                .and_modify(|fonts| fonts.push(font_id))
-                .or_insert(vec![font_id]);
+                .and_modify(|familes| {
+                    if !familes.contains(&family_id) {
+                        familes.push(family_id);
+                    }
+                })
+                .or_insert(vec![family_id]);
         }
 
         #[cfg(feature = "emacs")]
@@ -359,8 +364,12 @@ impl ScannerSink for Inner {
             index
                 .emacs_script_map
                 .entry(SmallString::new(supported_script.as_str()))
-                .and_modify(|fonts| fonts.push(font_id))
-                .or_insert(vec![font_id]);
+                .and_modify(|families| {
+                    if !families.contains(&family_id) {
+                        families.push(family_id);
+                    }
+                })
+                .or_insert(vec![family_id]);
         }
     }
 }
@@ -376,8 +385,7 @@ pub struct FontInfo {
     pub style: Style,
     all_names: Vec<String>,
     name_count: usize,
-    pub lang_tags: Vec<Tag>,
-    pub script_tags: Vec<Tag>,
+    pub writing_systems: Vec<(Tag, Tag, Vec<Tag>)>,
     #[cfg(feature = "emacs")]
     pub supported_charsets: Vec<SmallString>,
     #[cfg(feature = "emacs")]
@@ -560,13 +568,16 @@ impl Scanner {
             }
         }
         self.font.name_count = count;
-        self.font.script_tags = Vec::new();
-        self.font.lang_tags = Vec::new();
-
-        font.writing_systems().for_each(|w| {
-            self.font.script_tags.push(w.script_tag());
-            self.font.lang_tags.push(w.language_tag());
-        });
+        self.font.writing_systems = font
+            .writing_systems()
+            .map(|w| {
+                (
+                    w.script_tag(),
+                    w.language_tag(),
+                    w.features().map(|feature| feature.tag()).collect(),
+                )
+            })
+            .collect();
 
         #[cfg(feature = "emacs")]
         {
@@ -580,7 +591,13 @@ impl Scanner {
                         .map(|lang| lang.to_opentype())
                         .flatten()
                     {
-                        if !self.font.lang_tags.contains(&language) {
+                        if self
+                            .font
+                            .writing_systems
+                            .iter()
+                            .find(|(_, language_tag, _)| *language_tag == language)
+                            .is_none()
+                        {
                             return None;
                         }
                     }

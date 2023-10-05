@@ -3,6 +3,7 @@ use super::index::*;
 use super::library::FontLibrary;
 use super::types::{FamilyId, FamilyKey, FontId, FontKey, SourceId};
 use super::{shared_data::SharedData, Font};
+use crate::emacs::FontSpec;
 use crate::util::fxhash::FxHashMap;
 use std::sync::Arc;
 use swash::proxy::CharmapProxy;
@@ -164,6 +165,14 @@ impl FontCache {
         attributes: impl Into<Attributes>,
     ) -> Option<FontEntry<'a>> {
         self.index.query(family, attributes)
+    }
+
+    pub fn list<'a>(&'a self, spec: FontSpec) -> Vec<FontEntry<'a>> {
+        self.index.list(spec)
+    }
+
+    pub fn match_<'a>(&'a self, spec: FontSpec) -> Option<FontEntry<'a>> {
+        self.index.match_(spec)
     }
 
     /// Returns a font entry for the specified identifier.
