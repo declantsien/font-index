@@ -1,6 +1,11 @@
+use isolang::Language;
 use once_cell::sync::Lazy as LazyLock;
+use swash::{Stretch, Style, Weight};
 
-use crate::util::{fxhash::FxHashMap, string::SmallString};
+use crate::{
+    types::OpentypeSpec,
+    util::{fxhash::FxHashMap, string::SmallString},
+};
 
 pub static EMACS_CHARSET_MAP: LazyLock<FxHashMap<SmallString, (Vec<u32>, Option<SmallString>)>> =
     LazyLock::new(|| {
@@ -311,3 +316,121 @@ pub static SCRIPT_REPRESENTATIVE_CHARS: LazyLock<FxHashMap<SmallString, Vec<u32>
 
         charset_map
     });
+
+#[derive(Clone)]
+pub struct FontSpec {
+    // VALUE must be a string specifying the font family
+    // (e.g. "Monospace").
+    pub family: Option<String>,
+
+    // VALUE must be a string or a symbol specifying the font foundry, e.g. misc.
+    pub foundry: Option<String>,
+
+    pub width: Option<Stretch>,
+
+    // VALUE specifies the weight of the font to use.  It must be one of
+    // the symbols ultra-heavy, heavy (a.k.a. black),
+    // ultra-bold (a.k.a. extra-bold), bold,
+    // semi-bold (a.k.a. demi-bold), medium, normal (a.k.a. regular,
+    // a.k.a. book), semi-light (a.k.a. demi-light),
+    // light, extra-light (a.k.a. ultra-light), or thin.
+    pub weight: Option<Weight>,
+
+    // VALUE specifies the slant of the font to use.  It must be one of the
+    // symbols italic, oblique, normal, reverse-italic, or
+    // reverse-oblique.
+    pub slant: Option<Style>,
+
+    // VALUE must be a string or a symbol specifying the additional
+    // typographic style information of a font, e.g. sans.
+    pub adstyle: Option<String>,
+
+    // VALUE must be a string or a symbol specifying the charset registry and
+    // encoding of a font, e.g. iso8859-1.
+    pub registry: Option<String>,
+
+    // VALUE must be a non-negative integer or a floating point number
+    // specifying the font size.  It specifies the font size in pixels (if
+    // VALUE is an integer), or in points (if VALUE is a float).
+    pub size: Option<i32>,
+
+    // VALUE must be a non-negative number that specifies the resolution
+    // (dot per inch) for which the font is designed.
+    pub dpi: Option<u32>,
+
+    // VALUE specifies the spacing of the font: mono, proportional, charcell,
+    // or dual.  It can be either a number (0 for proportional, 90 for dual,
+    // 100 for mono, 110 for charcell) or a 1-letter symbol: P, D, M,
+    // or C (lower-case variants are also accepted).
+    pub spacing: Option<Spacing>,
+
+    // VALUE must be a non-negative integer specifying the average width of
+    // the font in 1/10 pixel units.
+    pub avgwidth: Option<i32>,
+
+    // VALUE must be a string of XLFD-style or fontconfig-style font name.
+    pub name: Option<String>,
+
+    // VALUE must be a symbol representing a script that the font must
+    // support.  It may be a symbol representing a subgroup of a script
+    // listed in the variable script-representative-chars.
+    pub script: Option<String>,
+
+    // VALUE must be a symbol whose name is a two-letter ISO-639 language
+    // name, e.g. ja.  The value is matched against the "Additional Style"
+    // field of the XLFD spec of a font, if it's non-empty, on X, and
+    // against the codepages supported by the font on w32.
+    pub lang: Option<Language>,
+
+    // VALUE must be a list (SCRIPT-TAG, LANGSYS-TAG, GSUB, GPOS) to specify
+    // required OpenType features.
+    //   script_tag: OpenType script tag symbol (e.g. deva).
+    //   langsys_tag: OpenType language system tag symbol,
+    //      or None for the default language system.
+    //   gsub: List of OpenType GSUB feature tag symbols, or None if none required.
+    //   GPOS: List of OpenType GPOS feature tag symbols, or None if none required.
+
+    // GSUB and GPOS may contain None elements.  In such a case, the font
+    // must not have any of the remaining elements.
+
+    // For instance, if the VALUE is
+    // (thai, None, None, vec![mark]),
+    // the font must
+    // be an OpenType font whose GPOS table of thai script's default
+    // language system must contain mark feature.
+    pub otf: Option<OpentypeSpec>,
+}
+
+// mono, proportional, charcell,
+// or dual.  It can be either a number (0 for proportional, 90 for dual,
+// 100 for mono, 110 for charcell) or a 1-letter symbol: P, D, M,
+// or C (lower-case variants are also accepted).
+#[derive(Clone)]
+pub enum Spacing {
+    Mono = 0,
+    Proportional = 90,
+    Charcell = 100,
+    Dual = 110,
+}
+
+impl Spacing {
+    pub fn from_number(num: i32) -> Option<Self> {
+        match num {
+            0 => Some(Self::Proportional),
+            90 => Some(Self::Dual),
+            100 => Some(Self::Mono),
+            110 => Some(Self::Charcell),
+            _ => None,
+        }
+    }
+
+    pub fn from_symbol(sym: &str) -> Option<Self> {
+        match sym {
+            "P" | "p" => Some(Self::Proportional),
+            "D" | "d" => Some(Self::Dual),
+            "M" | "m" => Some(Self::Mono),
+            "C" | "c" => Some(Self::Charcell),
+            _ => None,
+        }
+    }
+}

@@ -11,6 +11,8 @@ license-file = "LICENSE"
 swash = "0.1"
 memmap2 = "0.2.1"
 once_cell = { version = "1.18.0", optional = true }
+isolang = { version = "2", optional = true }
+fancy-regex = { version = "0.11", optional = true }
 log = "0.4"
 
 [target.'cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))'.dependencies]
@@ -18,4 +20,4 @@ fontconfig-parser = "0.5"
 
 [features]
 default = [ "emacs" ]
-emacs = ["dep:once_cell"]
+emacs = ["dep:once_cell", "dep:isolang", "dep:fancy-regex"]

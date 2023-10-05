@@ -4,11 +4,12 @@ use super::{
     shared_data::{SharedData, WeakSharedData},
     types::{FamilyId, FontId, SourceId},
 };
+use crate::types::OpentypeSpec;
 use crate::util::string::SmallString;
 use std::path::PathBuf;
 use std::sync::RwLock;
 use std::time::SystemTime;
-use swash::{CacheKey, Attributes, Stretch, Style, Weight};
+use swash::{Attributes, CacheKey, Stretch, Style, Tag, Weight};
 
 #[derive(Clone)]
 pub struct FamilyData {
@@ -24,6 +25,7 @@ pub struct FamilyFontData {
     pub stretch: Stretch,
     pub weight: Weight,
     pub style: Style,
+    pub writing_systems: Vec<(Tag, Tag, Vec<Tag>)>,
 }
 
 impl FamilyData {
@@ -36,51 +38,138 @@ impl FamilyData {
         false
     }
 
+    #[cfg(feature = "emacs")]
+    pub fn list(
+        &self,
+        stretch: Option<Stretch>,
+        weight: Option<Weight>,
+        style: Option<Style>,
+        otf: Option<OpentypeSpec>,
+    ) -> Vec<FontId> {
+        self.fonts
+            .iter()
+            .filter(|font| {
+                if let Some((script_tag, language_tag, included_tags, excluded_tags)) = &otf {
+                    if font
+                        .writing_systems
+                        .iter()
+                        .find(|w| {
+                            w.0 == *script_tag
+                                && (language_tag.is_some() && w.1 == language_tag.unwrap())
+                                && (included_tags.is_some()
+                                    && included_tags
+                                        .as_ref()
+                                        .unwrap()
+                                        .iter()
+                                        .all(|feature_tag| w.2.contains(feature_tag)))
+                                && (excluded_tags.is_some()
+                                    && excluded_tags
+                                        .as_ref()
+                                        .unwrap()
+                                        .iter()
+                                        .all(|feature_tag| !w.2.contains(feature_tag)))
+                        })
+                        .is_none()
+                    {
+                        return false;
+                    }
+                }
+                true
+            })
+            .filter(|font| {
+                if stretch.is_some() && stretch.unwrap() != font.stretch {
+                    return false;
+                }
+                true
+            })
+            .filter(|font| {
+                if style.is_some() && style.unwrap() != font.style {
+                    return false;
+                }
+                true
+            })
+            .filter(|font| {
+                if weight.is_some() && weight.unwrap() != font.weight {
+                    return false;
+                }
+                true
+            })
+            .map(|font| font.id)
+            .collect()
+    }
+
     /// Returns the font that most closely matches the specified attributes.
-    pub fn query(&self, attributes: Attributes) -> Option<FontId> {
+    pub fn match_(&self, attributes: Attributes, otf: Option<OpentypeSpec>) -> Option<FontId> {
+        let filtered_fonts = self.fonts.iter().filter(|font| {
+            if let Some((script_tag, language_tag, included_tags, excluded_tags)) = &otf {
+                if font
+                    .writing_systems
+                    .iter()
+                    .find(|w| {
+                        w.0 == *script_tag
+                            && (language_tag.is_some() && w.1 == language_tag.unwrap())
+                            && (included_tags.is_some()
+                                && included_tags
+                                    .as_ref()
+                                    .unwrap()
+                                    .iter()
+                                    .all(|feature_tag| w.2.contains(feature_tag)))
+                            && (excluded_tags.is_some()
+                                && excluded_tags
+                                    .as_ref()
+                                    .unwrap()
+                                    .iter()
+                                    .all(|feature_tag| !w.2.contains(feature_tag)))
+                    })
+                    .is_none()
+                {
+                    return false;
+                }
+            }
+            true
+        });
+
         let style = attributes.style();
         let weight = attributes.weight();
         let stretch = attributes.stretch();
-        let mut min_stretch_dist = i32::MAX;
+
         let mut matching_stretch = Stretch::NORMAL;
         if self.has_stretch {
-            if stretch <= Stretch::NORMAL {
-                for font in &self.fonts {
-                    let val = font.stretch;
-                    let font_stretch = if val > Stretch::NORMAL {
+            if let Some(val) = filtered_fonts.clone().find_map(|font| {
+                let val = font.stretch;
+                let font_stretch = if stretch <= Stretch::NORMAL {
+                    if val > Stretch::NORMAL {
                         val.raw() as i32 - Stretch::NORMAL.raw() as i32
                             + Stretch::ULTRA_EXPANDED.raw() as i32
                     } else {
                         val.raw() as i32
-                    };
-                    let offset = (font_stretch - stretch.raw() as i32).abs();
-                    if offset < min_stretch_dist {
-                        min_stretch_dist = offset;
-                        matching_stretch = val;
                     }
-                }
-            } else {
-                for font in &self.fonts {
-                    let val = font.stretch;
-                    let font_stretch = if val < Stretch::NORMAL {
+                } else {
+                    if val < Stretch::NORMAL {
                         val.raw() as i32 - Stretch::NORMAL.raw() as i32
                             + Stretch::ULTRA_EXPANDED.raw() as i32
                     } else {
                         val.raw() as i32
-                    };
-                    let offset = (font_stretch - stretch.raw() as i32).abs();
-                    if offset < min_stretch_dist {
-                        min_stretch_dist = offset;
-                        matching_stretch = val;
                     }
+                };
+
+                let offset = (font_stretch - stretch.raw() as i32).abs();
+                if offset < i32::MAX {
+                    return Some(val);
                 }
+                None
+            }) {
+                matching_stretch = val;
             }
         }
+
+        let filtered_fonts = filtered_fonts.filter(|f| f.stretch == matching_stretch);
+
         let mut matching_style;
         match style {
             Style::Normal => {
                 matching_style = Style::Italic;
-                for font in self.fonts.iter().filter(|f| f.stretch == matching_stretch) {
+                for font in filtered_fonts.clone() {
                     let val = font.style;
                     match val {
                         Style::Normal => {
@@ -96,7 +185,7 @@ impl FamilyData {
             }
             Style::Oblique(_) => {
                 matching_style = Style::Normal;
-                for font in self.fonts.iter().filter(|f| f.stretch == matching_stretch) {
+                for font in filtered_fonts.clone() {
                     let val = font.style;
                     match val {
                         Style::Oblique(_) => {
@@ -112,7 +201,7 @@ impl FamilyData {
             }
             Style::Italic => {
                 matching_style = Style::Normal;
-                for font in self.fonts.iter().filter(|f| f.stretch == matching_stretch) {
+                for font in filtered_fonts.clone() {
                     let val = font.style;
                     match val {
                         Style::Italic => {
@@ -127,76 +216,62 @@ impl FamilyData {
                 }
             }
         }
+
+        let filtered_fonts = filtered_fonts.filter(|f| f.style == matching_style);
+
         // If the desired weight is inclusively between 400 and 500
         if weight >= Weight(400) && weight <= Weight(500) {
             // weights greater than or equal to the target weight are checked
             // in ascending order until 500 is hit and checked
-            for font in self.fonts.iter().filter(|f| {
-                f.stretch == matching_stretch
-                    && f.style == matching_style
-                    && f.weight >= weight
-                    && f.weight <= Weight(500)
-            }) {
+            for font in filtered_fonts
+                .clone()
+                .filter(|f| f.weight >= weight && f.weight <= Weight(500))
+            {
                 return Some(font.id);
             }
             // followed by weights less than the target weight in descending
             // order
-            for font in self.fonts.iter().rev().filter(|f| {
-                f.stretch == matching_stretch && f.style == matching_style && f.weight < weight
-            }) {
+            for font in filtered_fonts.clone().rev().filter(|f| f.weight < weight) {
                 return Some(font.id);
             }
             // followed by weights greater than 500, until a match is found
-            return self
-                .fonts
-                .iter()
-                .filter(|f| {
-                    f.stretch == matching_stretch
-                        && f.style == matching_style
-                        && f.weight > Weight(500)
-                })
+            return filtered_fonts
+                .filter(|f| f.weight > Weight(500))
                 .map(|f| f.id)
                 .next();
         // If the desired weight is less than 400
         } else if weight < Weight(400) {
             // weights less than or equal to the desired weight are checked in
             // descending order
-            for font in self.fonts.iter().rev().filter(|f| {
-                f.stretch == matching_stretch && f.style == matching_style && f.weight <= weight
-            }) {
+            for font in filtered_fonts.clone().rev().filter(|f| f.weight <= weight) {
                 return Some(font.id);
             }
             // followed by weights above the desired weight in ascending order
             // until a match is found
-            return self
-                .fonts
-                .iter()
-                .filter(|f| {
-                    f.stretch == matching_stretch && f.style == matching_style && f.weight > weight
-                })
+            return filtered_fonts
+                .filter(|f| f.weight > weight)
                 .map(|f| f.id)
                 .next();
         // If the desired weight is greater than 500
         } else {
             // weights greater than or equal to the desired weight are checked
             // in ascending order
-            for font in self.fonts.iter().filter(|f| {
-                f.stretch == matching_stretch && f.style == matching_style && f.weight >= weight
-            }) {
+            for font in filtered_fonts.clone().filter(|f| f.weight >= weight) {
                 return Some(font.id);
             }
             // followed by weights below the desired weight in descending order
             // until a match is found
-            return self
-                .fonts
-                .iter()
+            return filtered_fonts
                 .rev()
-                .filter(|f| {
-                    f.stretch == matching_stretch && f.style == matching_style && f.weight < weight
-                })
+                .filter(|f| f.weight < weight)
                 .map(|f| f.id)
                 .next();
         }
+    }
+
+    /// Returns the font that most closely matches the specified attributes.
+    pub fn query(&self, attributes: Attributes) -> Option<FontId> {
+        self.match_(attributes, None)
     }
 }
 

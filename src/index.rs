@@ -6,13 +6,23 @@ use super::{
     fallback::Fallbacks,
     types::{FamilyId, GenericFamily},
 };
+#[cfg(feature = "emacs")]
+use crate::emacs::FontSpec;
 use crate::util::{
     fxhash::FxHashMap,
     string::{LowercaseString, SmallString},
 };
+#[cfg(feature = "emacs")]
+use fancy_regex::Regex;
+#[cfg(feature = "emacs")]
+use log::warn;
+#[cfg(feature = "emacs")]
+use std::collections::HashSet;
 use std::path::Path;
 use swash::text::{Cjk, Script};
 use swash::Tag;
+#[cfg(feature = "emacs")]
+use swash::{text::Language, Stretch, Style, Weight};
 use swash::{Attributes, CacheKey};
 
 /// Type alias for signatures to distinguish between inherent and
@@ -30,12 +40,12 @@ pub struct StaticIndex {
     pub base: BaseIndex,
     pub families: Vec<FamilyData>,
     pub script_map: FxHashMap<Script, Fallbacks>,
-    pub script_tag_map: FxHashMap<Tag, Vec<FontId>>,
-    pub language_tag_map: FxHashMap<Tag, Vec<FontId>>,
+    pub script_tag_map: FxHashMap<Tag, Vec<FamilyId>>,
+    pub language_tag_map: FxHashMap<Tag, Vec<FamilyId>>,
     #[cfg(feature = "emacs")]
-    pub emacs_charset_map: FxHashMap<SmallString, Vec<FontId>>,
+    pub emacs_charset_map: FxHashMap<SmallString, Vec<FamilyId>>,
     #[cfg(feature = "emacs")]
-    pub emacs_script_map: FxHashMap<SmallString, Vec<FontId>>,
+    pub emacs_script_map: FxHashMap<SmallString, Vec<FamilyId>>,
     pub cjk: [Fallbacks; 5],
     pub generic: [Option<FamilyId>; 13],
 }
@@ -318,6 +328,229 @@ impl StaticIndex {
         })
     }
 
+    /// Returns a list font entries that matches the specified family and
+    /// attributes.
+    #[cfg(feature = "emacs")]
+    pub fn list<'a>(&'a self, spec: FontSpec) -> Vec<FontEntry<'a>> {
+        let filter = |family: FamilyKey<'a>,
+                      stretch: Option<Stretch>,
+                      weight: Option<Weight>,
+                      style: Option<Style>,
+                      otf: Option<OpentypeSpec>| {
+            let family = self.family_by_key(family);
+            if family.is_none() {
+                return vec![];
+            }
+            let family = family.unwrap();
+            let fonts = family.data.list(stretch, weight, style, otf);
+            let fonts = fonts
+                .iter()
+                .filter_map(|font_id| {
+                    if let Some(data) = self.base.fonts.get(font_id.to_usize()) {
+                        return Some(FontEntry {
+                            index: &self.base,
+                            family: family.data,
+                            data,
+                        });
+                    }
+                    None
+                })
+                .collect();
+            return fonts;
+        };
+
+        //TODO impl spacing
+        let FontSpec {
+            width,
+            weight,
+            slant,
+            spacing,
+            otf,
+            ..
+        } = spec.clone();
+
+        if let Some(_) = spacing {
+            warn!("spacing is not yet supported");
+        }
+        self.families_by_spec(spec)
+            .iter()
+            .map(|family_id| FamilyKey::from(*family_id))
+            .map(|key| filter(key, width, weight, slant, otf.clone()))
+            .flatten()
+            .collect()
+    }
+
+    #[cfg(feature = "emacs")]
+    pub fn match_<'a>(&'a self, spec: FontSpec) -> Option<FontEntry<'a>> {
+        //TODO impl spacing
+        let FontSpec {
+            width,
+            weight,
+            slant,
+            spacing,
+            otf,
+            ..
+        } = spec.clone();
+        if let Some(_) = spacing {
+            warn!("spacing is not yet supported");
+        }
+        let attrs = Attributes::new(
+            width.unwrap_or(Stretch::NORMAL),
+            weight.unwrap_or(Weight::NORMAL),
+            slant.unwrap_or(Style::Normal),
+        );
+
+        let query = |family: FamilyId, attributes: Attributes, otf: Option<OpentypeSpec>| {
+            let family = self.family_by_key(family)?;
+            let attrs = attributes.into();
+            let font_id = family.data.match_(attrs, otf)?;
+            let data = self.base.fonts.get(font_id.to_usize())?;
+            Some(FontEntry {
+                index: &self.base,
+                family: family.data,
+                data,
+            })
+        };
+
+        self.families_by_spec(spec)
+            .iter()
+            .find_map(|family| query(*family, attrs, otf.clone()))
+    }
+
+    //TODO impl foundry, ref to fontconfig foundry implementation
+    //TODO impl XLFD-style or fontconfig-style font name, more defails from Emacs info
+    #[cfg(feature = "emacs")]
+    pub fn families_by_spec<'a>(
+        &'a self,
+        FontSpec {
+            family,
+            foundry,
+            registry,
+            name,
+            script,
+            lang,
+            otf,
+            ..
+        }: FontSpec,
+    ) -> Vec<FamilyId> {
+        if let Some(_) = foundry {
+            warn!("foundry is not yet supported");
+        }
+
+        if let Some(_) = name {
+            warn!("name is not yet supported");
+        }
+
+        let intersection = |families: Vec<FamilyId>, _families: Option<&Vec<FamilyId>>| {
+            if _families.is_none() {
+                return vec![];
+            }
+            let _families = _families.unwrap();
+
+            if families.is_empty() && !_families.is_empty() {
+                return _families.clone();
+            } else {
+                let unique_a = families.iter().collect::<HashSet<_>>();
+                let unique_b = _families.iter().collect::<HashSet<_>>();
+
+                return unique_a
+                    .intersection(&unique_b)
+                    .map(|id| **id)
+                    .collect::<Vec<_>>();
+            }
+        };
+
+        let mut families = family
+            .map(|family| {
+                self.family_by_name(family.as_str())
+                    .map(|entry| vec![entry.data.id])
+            })
+            .flatten()
+            .unwrap_or(vec![]);
+
+        if let Some((script, ..)) = otf {
+            let _families = self.families_by_script(script);
+            families = intersection(families, _families);
+        }
+
+        if let Some(regexp) = registry {
+            let _families = self.families_by_charset(regexp);
+            families = intersection(families, _families);
+        }
+
+        if let Some(script) = script {
+            let _families = self.families_by_emacs_script(script);
+            families = intersection(families, _families);
+        }
+
+        if let Some(lang) = lang {
+            let _f = lang
+                .to_639_1()
+                .map(|lang| Language::parse(lang))
+                .flatten()
+                .map(|lang| lang.to_opentype())
+                .flatten()
+                .map(|lang| self.families_by_lang(lang))
+                .flatten();
+            families = intersection(families, _f);
+        }
+
+        families.dedup();
+        families
+    }
+
+    #[cfg(feature = "emacs")]
+    pub fn families_by_charset(&self, regexp: String) -> Option<&Vec<FamilyId>> {
+        let string_match_p = |regexp: &str, string: &str, start: Option<i64>| {
+            let re = Regex::new(&lisp_regex_to_rust(regexp)).ok().unwrap();
+
+            let start = start.unwrap_or(0) as usize;
+            if let Some(_) = re.captures_iter(&string[start..]).next() {
+                true
+            } else {
+                false
+            }
+        };
+        self.emacs_charset_map
+            .iter()
+            .find_map(|(charset, families)| {
+                if string_match_p(regexp.as_str(), charset.as_str(), Some(0)) {
+                    return Some(families);
+                }
+                None
+            })
+    }
+
+    #[cfg(feature = "emacs")]
+    pub fn families_by_emacs_script(&self, script: String) -> Option<&Vec<FamilyId>> {
+        self.emacs_script_map
+            .iter()
+            .find_map(|(script_, families)| {
+                if script.as_str() == script_.as_str() {
+                    return Some(families);
+                }
+                None
+            })
+    }
+
+    pub fn families_by_script(&self, lang: Tag) -> Option<&Vec<FamilyId>> {
+        self.script_tag_map.iter().find_map(|(lang_, families)| {
+            if lang == *lang_ {
+                return Some(families);
+            }
+            None
+        })
+    }
+
+    pub fn families_by_lang(&self, lang: Tag) -> Option<&Vec<FamilyId>> {
+        self.language_tag_map.iter().find_map(|(lang_, families)| {
+            if lang == *lang_ {
+                return Some(families);
+            }
+            None
+        })
+    }
+
     /// Returns a font family entry for the specified family key.
     pub fn family_by_key<'a>(&'a self, key: impl Into<FamilyKey<'a>>) -> Option<FamilyEntry<'a>> {
         match key.into() {
@@ -476,4 +709,23 @@ impl<'a> SourceEntry<'a> {
             SourceKind::File(data) => Some(&data.path),
         }
     }
+}
+
+// Invert the escaping of parens. i.e. \( => ( and ( => \(
+// copied from https://github.com/CeleritasCelery/rune/blob/master/src/search.rs#L38
+#[cfg(feature = "emacs")]
+fn lisp_regex_to_rust(regexp: &str) -> String {
+    let mut norm_regex = String::new();
+    let mut chars = regexp.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '(' => norm_regex.push_str("\\("),
+            ')' => norm_regex.push_str("\\)"),
+            '\\' if matches!(chars.peek(), Some('(' | ')')) => {
+                norm_regex.push(chars.next().unwrap());
+            }
+            c => norm_regex.push(c),
+        }
+    }
+    norm_regex
 }

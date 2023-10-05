@@ -1,6 +1,6 @@
 //! Basic types for interacting with a font library.
 
-use swash::Attributes;
+use swash::{Attributes, Tag};
 
 use crate::util::string::LowercaseString;
 
@@ -150,3 +150,10 @@ impl<'a> From<(FamilyKey<'a>, Attributes)> for FontKey<'a> {
         Self::Descriptor(desc.0, desc.1)
     }
 }
+
+pub type OpentypeSpec = (
+    Tag,
+    Option<Tag>,
+    Option<Vec<Tag>>, // must contain these feature tags.
+    Option<Vec<Tag>>, // must not have any of these feature tags
+);
