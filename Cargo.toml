@@ -1,6 +1,6 @@
 [package]
 name = "font-index"
-version = "0.1.6"
+version = "0.2.0"
 authors = ["chad <cbrokaw@gmail.com>"]
 edition = "2018"
 description = "Static index for system fonts"
