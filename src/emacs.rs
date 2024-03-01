@@ -317,7 +317,7 @@ pub static SCRIPT_REPRESENTATIVE_CHARS: LazyLock<FxHashMap<SmallString, Vec<u32>
         charset_map
     });
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FontSpec {
     // VALUE must be a string specifying the font family
     // (e.g. "Monospace").
@@ -405,7 +405,7 @@ pub struct FontSpec {
 // or dual.  It can be either a number (0 for proportional, 90 for dual,
 // 100 for mono, 110 for charcell) or a 1-letter symbol: P, D, M,
 // or C (lower-case variants are also accepted).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Spacing {
     Mono = 0,
     Proportional = 90,

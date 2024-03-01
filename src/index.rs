@@ -441,7 +441,7 @@ impl StaticIndex {
             warn!("name is not yet supported");
         }
 
-        let intersection = |families: Vec<FamilyId>, _families: Option<&Vec<FamilyId>>| {
+        let intersection = |families: Vec<FamilyId>, _families: Option<Vec<FamilyId>>| {
             if _families.is_none() {
                 return vec![];
             }
@@ -500,52 +500,51 @@ impl StaticIndex {
     }
 
     #[cfg(feature = "emacs")]
-    pub fn families_by_charset(&self, regexp: String) -> Option<&Vec<FamilyId>> {
-        let string_match_p = |regexp: &str, string: &str, start: Option<i64>| {
-            let re = Regex::new(&lisp_regex_to_rust(regexp)).ok().unwrap();
-
-            let start = start.unwrap_or(0) as usize;
-            if let Some(_) = re.captures_iter(&string[start..]).next() {
-                true
-            } else {
-                false
-            }
+    pub fn families_by_charset(&self, regexp: String) -> Option<Vec<FamilyId>> {
+        let string_match_p = |regexp: &str, string: &str, _start: Option<i64>| {
+            let re = Regex::new(regexp).ok().unwrap();
+            re.is_match(string).ok().unwrap()
         };
         self.emacs_charset_map
             .iter()
-            .find_map(|(charset, families)| {
+            .filter_map(|(charset, families)| {
                 if string_match_p(regexp.as_str(), charset.as_str(), Some(0)) {
-                    return Some(families);
+                    return Some(families.clone());
                 }
                 None
+            })
+            .reduce(|acc, e| {
+                let mut families = [&acc[..], &e[..]].concat();
+                families.dedup();
+                families
             })
     }
 
     #[cfg(feature = "emacs")]
-    pub fn families_by_emacs_script(&self, script: String) -> Option<&Vec<FamilyId>> {
+    pub fn families_by_emacs_script(&self, script: String) -> Option<Vec<FamilyId>> {
         self.emacs_script_map
             .iter()
             .find_map(|(script_, families)| {
                 if script.as_str() == script_.as_str() {
-                    return Some(families);
+                    return Some(families.clone());
                 }
                 None
             })
     }
 
-    pub fn families_by_script(&self, lang: Tag) -> Option<&Vec<FamilyId>> {
+    pub fn families_by_script(&self, lang: Tag) -> Option<Vec<FamilyId>> {
         self.script_tag_map.iter().find_map(|(lang_, families)| {
             if lang == *lang_ {
-                return Some(families);
+                return Some(families.clone());
             }
             None
         })
     }
 
-    pub fn families_by_lang(&self, lang: Tag) -> Option<&Vec<FamilyId>> {
+    pub fn families_by_lang(&self, lang: Tag) -> Option<Vec<FamilyId>> {
         self.language_tag_map.iter().find_map(|(lang_, families)| {
             if lang == *lang_ {
-                return Some(families);
+                return Some(families.clone());
             }
             None
         })
@@ -714,6 +713,7 @@ impl<'a> SourceEntry<'a> {
 // Invert the escaping of parens. i.e. \( => ( and ( => \(
 // copied from https://github.com/CeleritasCelery/rune/blob/master/src/search.rs#L38
 #[cfg(feature = "emacs")]
+#[allow(dead_code)]
 fn lisp_regex_to_rust(regexp: &str) -> String {
     let mut norm_regex = String::new();
     let mut chars = regexp.chars().peekable();
@@ -728,4 +728,16 @@ fn lisp_regex_to_rust(regexp: &str) -> String {
         }
     }
     norm_regex
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_works() -> Result<(), String> {
+        if 2 + 2 == 4 {
+            Ok(())
+        } else {
+            Err(String::from("two plus two does not equal four"))
+        }
+    }
 }

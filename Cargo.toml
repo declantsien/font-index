@@ -8,12 +8,16 @@ repository = "https://git.sr.ht/~declantsien/font-index"
 license-file = "LICENSE"
 
 [dependencies]
-swash = "0.1"
 memmap2 = "0.2.1"
 once_cell = { version = "1.18.0", optional = true }
 isolang = { version = "2", optional = true }
 fancy-regex = { version = "0.11", optional = true }
 log = "0.4"
+
+[dependencies.swash]
+git = "https://github.com/declantsien/swash.git"
+branch = "webrender-fix"
+default-features = false
 
 [target.'cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))'.dependencies]
 fontconfig-parser = "0.5"

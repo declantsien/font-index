@@ -1,9 +1,9 @@
 //! Shared font data.
 
-use std::{io, fmt};
 use std::path::Path;
 use std::sync::{Arc, Weak};
 use std::time::SystemTime;
+use std::{fmt, io};
 
 enum Inner {
     Mapped(memmap2::Mmap),
